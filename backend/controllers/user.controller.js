@@ -1,6 +1,9 @@
-const bcryptjs = require('bcryptjs');
+const bcryptjs = require('bcryptjs'); // Remove if not used
+const  cloudinary  = require('cloudinary').v2;
 const User = require('../models/user.model.js');
-const bcrypt =require('bcryptjs');
+const Notification = require('../models/notification.model.js'); // Ensure this import is correct
+const bcrypt = require('bcryptjs'); // Consider removing if not used
+
 // Get user profile by username
 const getUserProfile = async (req, res) => {
     const { username } = req.params;
@@ -18,7 +21,6 @@ const getUserProfile = async (req, res) => {
         res.status(200).json(user);
 
     } catch (error) {
-        // Log the error message and respond with a 500 status code
         console.error('Error in Get User Profile:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -60,45 +62,43 @@ const followUnfollowUser = async (req, res) => {
             // Follow user
             await User.findByIdAndUpdate(id, { $push: { followers: req.user._id } });
             await User.findByIdAndUpdate(req.user._id, { $push: { following: id } });
+
             // Optionally send notification to the user
-            const newNotification =new Notification({
-                type:"follow",
-                from:req.user._id,
-                to:userToModify._id,
+            const newNotification = new Notification({
+                type: "follow",
+                from: req.user._id,
+                to: userToModify._id,
             });
 
-            await newNotification.dispatchEvent();
-
+            await newNotification.save(); // Adjust if `dispatchEvent` is not a valid method
 
             res.status(200).json({ message: 'User followed successfully' });
         }
 
     } catch (error) {
-        // Log the error message and respond with a 500 status code
         console.error('Error in follow and unfollow user:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-const getSuggestedUsers =async(req,res) =>{
+// Get suggested users
+const getSuggestedUsers = async (req, res) => {
     try {
-        const userId =req.user._id;
+        const userId = req.user._id;
 
-        const usersFollowedByMe =await User.findById(userId).select("following");
+        const usersFollowedByMe = await User.findById(userId).select("following");
 
-        const users =await User.aggregate([
-            {
-                $match: {
-                    _id: { $ne:userId },
-                }
-            },
-            {$sample:{size:10}}
-        ])
+        const users = await User.aggregate([
+            { $match: { _id: { $ne: userId } } },
+            { $sample: { size: 10 } }
+        ]);
+
         const filteredUsers = users.filter(user => !usersFollowedByMe.following.includes(user._id));
-        const suggestedUsers =filteredUsers.slice(0,4)
-        suggestedUsers.forEach(user=>user.password=null)
+        const suggestedUsers = filteredUsers.slice(0, 4);
 
-        res.status(200).json(suggestedUsers)
+        suggestedUsers.forEach(user => user.password = null); // Do not expose password
+
+        res.status(200).json(suggestedUsers);
 
     } catch (error) {
         console.error('Error in Suggested Users:', error.message);
@@ -106,38 +106,69 @@ const getSuggestedUsers =async(req,res) =>{
     }
 };
 
-const updateUser = async(req,res)=>{
-    const {fullName,email,username,currentPassword,newPassword,bio,link} = req.body;
-    let{profileImg,coverImg} =req.body;
-    
-    const userId =req.user._id;
+// Update user details
+const updateUser = async (req, res) => {
+    const { fullName, email, username, currentPassword, newPassword, bio, link } = req.body;
+    let { profileImg, coverImg } = req.body;
+
+    const userId = req.user._id;
 
     try {
-        const user =await  User.findById(userId);
-        if(!user){
+        let user = await User.findById(userId);
+        if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        if((!newPassword && currentPassword) || (!currentPassword && newPassword) ){
-            return res.status(400).json({ error: 'Please enter both current and new password'});
-        }
-        if(currentPassword && newPassword){
-            const isMatch = await  bcrypt.compare(currentPassword,user.password);
-            if(!isMatch){
-                return res.status(400).json({ error: 'Invalid current password' });
-            }
-            if(newPassword.length<15){
-                return res.status(400).json({ error: 'Password must be at least 6 characters'});
-            }
-            const salt =await bcrypt.genSalt(10);
-            user.password =await bcrypt.hash(newPassword,salt);
-        }
-        if(profileImg){
-            
+
+        if ((newPassword && !currentPassword) || (!newPassword && currentPassword)) {
+            return res.status(400).json({ error: 'Please enter both current and new password' });
         }
 
+        if (currentPassword && newPassword) {
+            const isMatch = await bcrypt.compare(currentPassword, user.password);
+            if (!isMatch) {
+                return res.status(400).json({ error: 'Invalid current password' });
+            }
+            if (newPassword.length < 6) {
+                return res.status(400).json({ error: 'Password must be at least 6 characters' });
+            }
+            const salt = await bcrypt.genSalt(10);
+            user.password = await bcrypt.hash(newPassword, salt);
+        }
+
+        // Handle Cloudinary image upload and deletion
+        if (profileImg) {
+            if (user.profileImg) {
+                await cloudinary.uploader.destroy(user.profileImg.split("/").pop().split(".")[0]);
+            }
+            const uploadedResponse = await cloudinary.uploader.upload(profileImg);
+            profileImg = uploadedResponse.secure_url;
+        }
+        if (coverImg) {
+            if (user.coverImg) {
+                await cloudinary.uploader.destroy(user.coverImg.split("/").pop().split(".")[0]);
+            }
+            const uploadedResponse = await cloudinary.uploader.upload(coverImg);
+            coverImg = uploadedResponse.secure_url;
+        }
+
+        user.fullName = fullName || user.fullName;
+        user.email = email || user.email;
+        user.username = username || user.username;
+        user.bio = bio || user.bio;
+        user.link = link || user.link;
+        user.profileImg = profileImg || user.profileImg;
+        user.coverImg = coverImg || user.coverImg;
+
+        user = await user.save();
+
+        user.password = null; // Do not expose password
+
+        res.status(200).json(user);
+
     } catch (error) {
-        
+        console.error('Error updating user:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
     }
 };
 
-module.exports = {updateUser, getUserProfile, followUnfollowUser ,getSuggestedUsers };
+module.exports = { updateUser, getUserProfile, followUnfollowUser, getSuggestedUsers };
