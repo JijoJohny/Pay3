@@ -2,9 +2,11 @@ const express = require("express");
 const dotenv = require("dotenv");
 const morgan = require("morgan");
 const cors = require('cors');
+const mongoose =require('mongoose');
 const cookieParser = require("cookie-parser");
 const authRoutes = require("./routes/auth.route.js");
 const userRoutes = require("./routes/user.routes.js");  // CommonJS import
+const postRoutes =require("./routes/post.routes.js");
 const connectMongoDB = require("./db/connectMongoDB.js");
 const cloudinary =require("cloudinary").v2;
 
@@ -37,6 +39,7 @@ const PORT = process.env.PORT || 5000;
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);  // CommonJS import
+app.use("/api/posts",postRoutes);
 
 // Start the server
 const server = app.listen(PORT, () => {
