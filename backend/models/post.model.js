@@ -30,6 +30,15 @@ const postSchema = new mongoose.Schema({
             },
         }
     ],
+    retweetOf: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Post',
+        default: null // Points to the original post being retweeted
+    },
+    retweetCount: {
+        type: Number,
+        default: 0 // Initialize retweet count to 0
+    },
 }, { timestamps: true });
 
 

@@ -51,6 +51,10 @@ const userSchema =new mongoose.Schema({
         type:String,
         default:"",
     },
+    retweetedPosts: [{ // Array to track retweeted posts
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Post'
+    }]
 },
 {timestamps:true}
 );
